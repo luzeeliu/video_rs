@@ -1,5 +1,5 @@
 from sentence_transformers import SentenceTransformer, models
-
+import torch.nn as nn
 
 #############load pretrained model######
 """
@@ -14,6 +14,19 @@ class vanilla_MPNet:
     def __init__(self, model_name = 'sentence-transformers/all-mpnet-base-v2', out_dim = 128):
         # load the model
         MPNet_model = models.Transformer(model_name)
+        
+        """
+        self.classifier = nn.Sequential(
+            nn.Linear(768,256),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(256, out_dim)
+        )
+        """
+        """
+        for param in MPNet_model.parameters():
+            param.requires_grad = False
+        """
         # set popling to collapse the sequence into a single fixed-size vector for classification
         pooling_model = models.Pooling(
             # pooling size, pooling type
@@ -30,8 +43,12 @@ class vanilla_MPNet:
             # output dim u want
             out_features=out_dim,
             # apply activation function
-            activation_function=models.ActivationFunction.tahn
+            #activation_function=nn.Tanh()
+            activation_function=None
         )
         
         self.model = SentenceTransformer(modules=[MPNet_model, pooling_model, dense])
+    
+    def forward(self, feature):
+        return self.model(feature)['sentence_embedding']
     
