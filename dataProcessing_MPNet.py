@@ -2,7 +2,9 @@ import re
 import pandas as pd
 import os
 import torch
+import numpy as np
 from torch.utils.data import Dataset
+from collections import OrderedDict
 from transformers import AutoTokenizer
 
 ## attention in dataprocessing we dont need use dataset 
@@ -38,13 +40,55 @@ def tokenize(text):
     return text.split()
 """
 tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-mpnet-base-v2')
-
+"""
 def label_voc(dataframe):
     label = dataframe['coarse_label'].tolist()
     unique_label = sorted(set(label))
     label_id = {l: idx for idx, l in enumerate(unique_label)}
     labels = [label_id[l] for l in label]
     return labels, label_id
+"""
+
+def split_label(raw):
+    if isinstance(raw, (list, tuple)):
+        tokens = raw
+    else:
+        s = str(raw)
+        s.replace('&', '|')
+        tokens = s.split('|')
+    clean = []
+    for i in tokens:
+        i = i.strip()
+        if not i:
+            continue
+        clean.append(i.lower())
+    
+    return list(OrderedDict.fromkeys(clean))
+        
+# build multi hot 
+def multi_hot(df):
+    splited = df['coarse_label'].apply(split_label)
+    # the splited is like
+    """
+    [
+        []
+        []
+    ]
+    """
+    # multi value means posiiton which is the lab appear index
+    voc = sorted({lab for labs in splited for lab in labs})
+    label_idx = {v:i for i, v in enumerate(voc)}
+    
+    # create a multihot
+    multi_hot = []
+    for i in splited:
+        box = [0] * len(voc)
+        for j in i:
+            box[label_idx[j]] = 1
+        multi_hot.append(box)
+    return np.array(multi_hot, dtype=np.float32), label_idx
+
+
 
 # dataset processing class
 class rs_MPNet(Dataset):
@@ -73,11 +117,11 @@ class rs_MPNet(Dataset):
         return{
             'input_ids': encoding['input_ids'].squeeze(0),
             'attention_mask': encoding['attention_mask'].squeeze(0),
-            'labels': torch.tensor(label, dtype=torch.long)
+            'labels': torch.tensor(label, dtype=torch.float32)
         }
 
 def dataprocessing_MPNet(df, labels = None, label_id = None):
     if labels is None:
-        labels, label_id = label_voc(df)
+        labels, label_id = multi_hot(df)
     return labels, rs_MPNet(df,labels, tokenizer), label_id
         
